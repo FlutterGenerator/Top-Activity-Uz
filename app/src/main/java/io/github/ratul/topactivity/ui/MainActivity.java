@@ -14,29 +14,31 @@
  *   You should have received a copy of the GNU General Public License
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package io.github.ratul.topactivity.ui;
+ package io.github.ratul.topactivity.ui;
 
 import android.app.*;
+import android.app.AppOpsManager;
 import android.content.*;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.*;
 import android.provider.*;
+import android.util.DisplayMetrics;
 import android.view.*;
 import android.widget.*;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.switchmaterial.SwitchMaterial;
-import java.io.*;
 import io.github.ratul.topactivity.*;
-import io.github.ratul.topactivity.utils.*;
 import io.github.ratul.topactivity.model.NotificationMonitor;
 import io.github.ratul.topactivity.service.*;
+import io.github.ratul.topactivity.utils.*;
 
 public class MainActivity extends AppCompatActivity {
     public static final String EXTRA_FROM_QS_TILE = "from_qs_tile";
     public static final String ACTION_STATE_CHANGED = "io.github.ratul.topactivity.ACTION_STATE_CHANGED";
-    
+
     private SwitchMaterial mWindowSwitch, mNotificationSwitch, mAccessibilitySwitch;
     private UpdateSwitchReceiver mReceiver;
     private MaterialAlertDialogBuilder fancy;
