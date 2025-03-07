@@ -1,30 +1,25 @@
 package io.github.ratul.topactivity.ui;
 
 import android.app.*;
+import android.app.usage.UsageStats;
+import android.app.usage.UsageStatsManager;
 import android.content.*;
 import android.net.Uri;
 import android.os.*;
-import android.provider.*;
+import android.provider.Settings;
 import android.view.*;
 import android.widget.*;
 import androidx.appcompat.app.ActionBar;
-import android.content.pm.*;
-import android.graphics.drawable.*;
-import android.graphics.*;
-import android.text.*;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 import java.util.List;
 import io.github.ratul.topactivity.*;
 import io.github.ratul.topactivity.utils.*;
-import io.github.ratul.topactivity.model.NotificationMonitor;
 import io.github.ratul.topactivity.service.*;
 import io.github.ratul.topactivity.model.TypefaceSpan;
 import java.io.*;
 import android.util.DisplayMetrics;
-import android.app.usage.UsageStats;
-import android.app.usage.UsageStatsManager;
 
 public class MainActivity extends AppCompatActivity {
     public static final String EXTRA_FROM_QS_TILE = "from_qs_tile";
@@ -44,7 +39,7 @@ public class MainActivity extends AppCompatActivity {
             startService(new Intent(this, AccessibilityMonitoringService.class));
         }
 
-        DatabaseUtil.setDisplayWidth(getScreenWidth(this));
+        DatabaseUtil.setDisplayWidth(getScreenWidth());
         fancy = new MaterialAlertDialogBuilder(this)
                 .setNegativeButton("Close", (di, btn) -> di.dismiss())
                 .setCancelable(false);
@@ -80,12 +75,13 @@ public class MainActivity extends AppCompatActivity {
 
         mWindowSwitch.setOnCheckedChangeListener((button, isChecked) -> {
             if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(MainActivity.this)) {
-                showPermissionDialog("Overlay Permission", "Please enable overlay permission to show window over other apps",
+                showPermissionDialog("Overlay Permission",
+                        "Please enable overlay permission to show window over other apps",
                         "Settings", Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
                 mWindowSwitch.setChecked(false);
             } else if (DatabaseUtil.hasAccess() && AccessibilityMonitoringService.getInstance() == null) {
                 showPermissionDialog("Accessibility Permission",
-                        "Please grant permission to use Accessibility Service for Current Activity app",
+                        "Please grant Accessibility permission for Current Activity app",
                         "Settings", Settings.ACTION_ACCESSIBILITY_SETTINGS);
                 mWindowSwitch.setChecked(false);
             } else if (!usageStats(MainActivity.this)) {
@@ -115,7 +111,9 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage(message)
                 .setPositiveButton(buttonText, (di, btn) -> {
                     Intent intent = new Intent(action);
-                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    if (!action.equals(Settings.ACTION_ACCESSIBILITY_SETTINGS)) {
+                        intent.setData(Uri.parse("package:" + getPackageName()));
+                    }
                     startActivity(intent);
                     di.dismiss();
                 })
@@ -155,10 +153,11 @@ public class MainActivity extends AppCompatActivity {
             case "Crash Log":
                 String errorLog = readFile(new File(App.getCrashLogDir(), "crash.txt"));
                 if (errorLog.isEmpty())
-                    showToast("No log was found");
+                    showToast("No log was found", 0);
                 else {
                     Intent intent = new Intent(this, CrashActivity.class);
                     intent.putExtra(CrashActivity.EXTRA_CRASH_INFO, errorLog);
+                    intent.putExtra("Restart", false);
                     startActivity(intent);
                 }
                 break;
@@ -173,22 +172,17 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    public static int getScreenWidth(Context context) {
-        DisplayMetrics displayMetrics = new DisplayMetrics();
-        ((WindowManager) context.getSystemService(Context.WINDOW_SERVICE))
-                .getDefaultDisplay().getMetrics(displayMetrics);
-        return displayMetrics.widthPixels;
-    }
-
-    public static boolean usageStats(Context context) {
+    private boolean usageStats(Context context) {
         UsageStatsManager usm = (UsageStatsManager) context.getSystemService(Context.USAGE_STATS_SERVICE);
         long currentTime = System.currentTimeMillis();
         List<UsageStats> stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, currentTime - 1000 * 60 * 60, currentTime);
         return stats != null && !stats.isEmpty();
     }
 
-    public void showToast(String message) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    private int getScreenWidth() {
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+        return displayMetrics.widthPixels;
     }
 
     class UpdateSwitchReceiver extends BroadcastReceiver {
@@ -199,4 +193,4 @@ public class MainActivity extends AppCompatActivity {
             mAccessibilitySwitch.setChecked(DatabaseUtil.hasAccess());
         }
     }
-            }
+    }
