@@ -7,10 +7,6 @@ import android.os.*;
 import android.provider.*;
 import android.view.*;
 import android.widget.*;
-import android.widget.CompoundButton.OnCheckedChangeListener;
-import android.content.pm.*;
-import android.graphics.drawable.*;
-import android.graphics.*;
 import android.text.*;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
@@ -19,17 +15,13 @@ import com.google.android.material.switchmaterial.SwitchMaterial;
 import java.util.List;
 import io.github.ratul.topactivity.*;
 import io.github.ratul.topactivity.utils.*;
-import io.github.ratul.topactivity.model.NotificationMonitor;
 import io.github.ratul.topactivity.service.*;
 import io.github.ratul.topactivity.model.TypefaceSpan;
 import java.io.*;
 import android.util.DisplayMetrics;
 import android.app.AppOpsManager;
+import android.content.pm.PackageManager;
 
-/**
- * Created by Wen on 16/02/2017.
- * Refactored by Ratul on 04/05/2022.
- */
 public class MainActivity extends AppCompatActivity {
     public static final String EXTRA_FROM_QS_TILE = "from_qs_tile";
     public static final String ACTION_STATE_CHANGED = "io.github.ratul.topactivity.ACTION_STATE_CHANGED";
@@ -89,12 +81,12 @@ public class MainActivity extends AppCompatActivity {
                 mWindowSwitch.setChecked(false);
             } else if (DatabaseUtil.hasAccess() && AccessibilityMonitoringService.getInstance() == null) {
                 showPermissionDialog("Accessibility Permission",
-                        "As per your choice, please grant permission to use Accessibility Service for Current Activity app in order to get current activity info",
+                        "Please grant Accessibility Service permission for this app",
                         "Settings", "android.settings.ACCESSIBILITY_SETTINGS");
                 mWindowSwitch.setChecked(false);
             } else if (!usageStats(MainActivity.this)) {
                 showPermissionDialog("Usage Access",
-                        "In order to monitor current task, please grant Usage Access permission for Current Activity app",
+                        "Please grant Usage Access permission for this app",
                         "Settings", "android.settings.USAGE_ACCESS_SETTINGS");
                 mWindowSwitch.setChecked(false);
             } else {
@@ -154,7 +146,7 @@ public class MainActivity extends AppCompatActivity {
         switch (title) {
             case "About App":
                 fancy.setTitle("About App").setMessage(
-                        "An useful open source tool for Android Developers, which shows the package name and class name of current activity\n\nHere are the main features of this app!\n● It provides a freely moveable popup window to view current activity info\n● It supports text copying from popup window\n● It supports quick settings and app shortcut for easy access to the popup window. Meaning you can get the popup window in your screen from anywhere")
+                        "An open-source tool for Android Developers that shows the package name and class name of the current activity.")
                         .show();
                 break;
             case "Crash Log":
@@ -168,16 +160,19 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 }
                 break;
+            case "GitHub Repo":
+                fancy.setTitle("GitHub Repo").setMessage("Would you like to visit the official GitHub repo of this app?")
+                        .setPositiveButton("Yes", (di, btn) -> {
+                            di.dismiss();
+                            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/FlutterGenerator/Current-Activity")));
+                        }).show();
+                break;
         }
         return super.onOptionsItemSelected(item);
     }
 
     public static int getScreenWidth(Context context) {
-        DisplayMetrics displayMetrics = new DisplayMetrics();
-        WindowManager windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
-        if (windowManager != null) {
-            windowManager.getDefaultDisplay().getMetrics(displayMetrics);
-        }
+        DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
         return displayMetrics.widthPixels;
     }
 
@@ -185,7 +180,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             AppOpsManager appOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
             int mode = appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS,
-                    Process.myUid(), context.getPackageName());
+                    android.os.Process.myUid(), context.getPackageName());
             if (mode == AppOpsManager.MODE_DEFAULT) {
                 return (context.checkCallingOrSelfPermission("android.permission.PACKAGE_USAGE_STATS") == PackageManager.PERMISSION_GRANTED);
             }
@@ -196,8 +191,8 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void showToast(String message, int length) {
-        runOnUiThread(() -> Toast.makeText(this, message, length).show());
+    public void showToast(String message, int duration) {
+        Toast.makeText(this, message, duration).show();
     }
 
     class UpdateSwitchReceiver extends BroadcastReceiver {
