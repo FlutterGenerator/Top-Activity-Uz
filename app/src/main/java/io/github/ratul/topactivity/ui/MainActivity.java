@@ -4,11 +4,17 @@ import android.app.*;
 import android.app.usage.UsageStats;
 import android.app.usage.UsageStatsManager;
 import android.content.*;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.*;
 import android.provider.Settings;
+import android.util.DisplayMetrics;
 import android.view.*;
 import android.widget.*;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -19,7 +25,6 @@ import io.github.ratul.topactivity.utils.*;
 import io.github.ratul.topactivity.service.*;
 import io.github.ratul.topactivity.model.TypefaceSpan;
 import java.io.*;
-import android.util.DisplayMetrics;
 
 public class MainActivity extends AppCompatActivity {
     public static final String EXTRA_FROM_QS_TILE = "from_qs_tile";
@@ -29,11 +34,24 @@ public class MainActivity extends AppCompatActivity {
     private MaterialAlertDialogBuilder fancy;
     public static MainActivity INSTANCE;
 
+    private final ActivityResultLauncher<String> requestPermissionLauncher =
+        registerForActivityResult(new ActivityResultContracts.RequestPermission(),
+            isGranted -> {
+                if (!isGranted) {
+                    showToast("Permission denied. Some features may not work.", Toast.LENGTH_LONG);
+                }
+            });
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         INSTANCE = this;
+
+        // Проверка разрешений на Android 13+ (POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            checkNotificationPermission();
+        }
 
         if (AccessibilityMonitoringService.getInstance() == null && DatabaseUtil.hasAccess()) {
             startService(new Intent(this, AccessibilityMonitoringService.class));
@@ -106,6 +124,13 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
+    private void checkNotificationPermission() {
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS);
+        }
+    }
+
     private void showPermissionDialog(String title, String message, String buttonText, String action) {
         fancy.setTitle(title)
                 .setMessage(message)
@@ -147,13 +172,12 @@ public class MainActivity extends AppCompatActivity {
         String title = item.getTitle().toString();
         switch (title) {
             case "About App":
-                fancy.setTitle("About App").setMessage("An open-source tool for Android Developers...")
-                        .show();
+                fancy.setTitle("About App").setMessage("An open-source tool for Android Developers...").show();
                 break;
             case "Crash Log":
                 String errorLog = readFile(new File(App.getCrashLogDir(), "crash.txt"));
                 if (errorLog.isEmpty())
-                    showToast("No log was found", 0);
+                    showToast("No log was found", Toast.LENGTH_SHORT);
                 else {
                     Intent intent = new Intent(this, CrashActivity.class);
                     intent.putExtra(CrashActivity.EXTRA_CRASH_INFO, errorLog);
@@ -180,8 +204,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private int getScreenWidth() {
-        DisplayMetrics displayMetrics = new DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+        DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
         return displayMetrics.widthPixels;
     }
 
@@ -193,4 +216,4 @@ public class MainActivity extends AppCompatActivity {
             mAccessibilitySwitch.setChecked(DatabaseUtil.hasAccess());
         }
     }
-    }
+                                 }
