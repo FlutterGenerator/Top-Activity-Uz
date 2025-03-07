@@ -7,27 +7,28 @@ import android.os.*;
 import android.provider.*;
 import android.view.*;
 import android.widget.*;
-import android.text.*;
-import android.util.DisplayMetrics;
-
 import androidx.appcompat.app.ActionBar;
+import android.content.pm.*;
+import android.graphics.drawable.*;
+import android.graphics.*;
+import android.text.*;
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.switchmaterial.SwitchMaterial;
-
-import java.io.*;
 import java.util.List;
-
 import io.github.ratul.topactivity.*;
-import io.github.ratul.topactivity.service.*;
 import io.github.ratul.topactivity.utils.*;
+import io.github.ratul.topactivity.model.NotificationMonitor;
+import io.github.ratul.topactivity.service.*;
 import io.github.ratul.topactivity.model.TypefaceSpan;
+import java.io.*;
+import android.util.DisplayMetrics;
+import android.app.usage.UsageStats;
+import android.app.usage.UsageStatsManager;
 
 public class MainActivity extends AppCompatActivity {
     public static final String EXTRA_FROM_QS_TILE = "from_qs_tile";
     public static final String ACTION_STATE_CHANGED = "io.github.ratul.topactivity.ACTION_STATE_CHANGED";
-    
     private SwitchMaterial mWindowSwitch, mNotificationSwitch, mAccessibilitySwitch;
     private BroadcastReceiver mReceiver;
     private MaterialAlertDialogBuilder fancy;
@@ -39,12 +40,11 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         INSTANCE = this;
 
-        if (DatabaseUtil.hasAccess() && AccessibilityMonitoringService.getInstance() == null) {
-            startForegroundService(new Intent(this, AccessibilityMonitoringService.class));
+        if (AccessibilityMonitoringService.getInstance() == null && DatabaseUtil.hasAccess()) {
+            startService(new Intent(this, AccessibilityMonitoringService.class));
         }
 
-        DatabaseUtil.setDisplayWidth(getScreenWidth());
-
+        DatabaseUtil.setDisplayWidth(getScreenWidth(this));
         fancy = new MaterialAlertDialogBuilder(this)
                 .setNegativeButton("Close", (di, btn) -> di.dismiss())
                 .setCancelable(false);
@@ -60,7 +60,7 @@ public class MainActivity extends AppCompatActivity {
         mNotificationSwitch = findViewById(R.id.sw_notification);
         mAccessibilitySwitch = findViewById(R.id.sw_accessibility);
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+        if (Build.VERSION.SDK_INT < 24) {
             mNotificationSwitch.setVisibility(View.INVISIBLE);
             findViewById(R.id.divider_useNotificationPref).setVisibility(View.INVISIBLE);
         }
@@ -74,19 +74,23 @@ public class MainActivity extends AppCompatActivity {
         mAccessibilitySwitch.setOnCheckedChangeListener((button, isChecked) -> {
             DatabaseUtil.setHasAccess(isChecked);
             if (isChecked && AccessibilityMonitoringService.getInstance() == null) {
-                startForegroundService(new Intent(MainActivity.this, AccessibilityMonitoringService.class));
+                startService(new Intent(MainActivity.this, AccessibilityMonitoringService.class));
             }
         });
 
         mWindowSwitch.setOnCheckedChangeListener((button, isChecked) -> {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-                showPermissionDialog("Overlay Permission",
-                        "Please enable overlay permission to show window over other apps",
+            if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(MainActivity.this)) {
+                showPermissionDialog("Overlay Permission", "Please enable overlay permission to show window over other apps",
                         "Settings", Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
                 mWindowSwitch.setChecked(false);
-            } else if (!usageStats(this)) {
+            } else if (DatabaseUtil.hasAccess() && AccessibilityMonitoringService.getInstance() == null) {
+                showPermissionDialog("Accessibility Permission",
+                        "Please grant permission to use Accessibility Service for Current Activity app",
+                        "Settings", Settings.ACTION_ACCESSIBILITY_SETTINGS);
+                mWindowSwitch.setChecked(false);
+            } else if (!usageStats(MainActivity.this)) {
                 showPermissionDialog("Usage Access",
-                        "In order to monitor current task, please grant Usage Access permission for Current Activity app",
+                        "Please grant Usage Access permission for Current Activity app",
                         "Settings", Settings.ACTION_USAGE_ACCESS_SETTINGS);
                 mWindowSwitch.setChecked(false);
             } else {
@@ -96,7 +100,7 @@ public class MainActivity extends AppCompatActivity {
                     WindowUtil.dismiss(MainActivity.this);
                 } else {
                     WindowUtil.show(MainActivity.this, getPackageName(), getClass().getName());
-                    startForegroundService(new Intent(MainActivity.this, MonitoringService.class));
+                    startService(new Intent(MainActivity.this, MonitoringService.class));
                 }
             }
         });
@@ -145,22 +149,16 @@ public class MainActivity extends AppCompatActivity {
         String title = item.getTitle().toString();
         switch (title) {
             case "About App":
-                fancy.setTitle("About App").setMessage(
-                        "An open-source tool for Android Developers to show the package name and class name of the current activity.\n\n"
-                                + "Main Features:\n"
-                                + "● Floating window with current activity info\n"
-                                + "● Supports text copying from popup\n"
-                                + "● Quick settings and app shortcut for easy access")
+                fancy.setTitle("About App").setMessage("An open-source tool for Android Developers...")
                         .show();
                 break;
             case "Crash Log":
                 String errorLog = readFile(new File(App.getCrashLogDir(), "crash.txt"));
-                if (errorLog.isEmpty()) {
-                    Toast.makeText(this, "No log was found", Toast.LENGTH_SHORT).show();
-                } else {
+                if (errorLog.isEmpty())
+                    showToast("No log was found");
+                else {
                     Intent intent = new Intent(this, CrashActivity.class);
                     intent.putExtra(CrashActivity.EXTRA_CRASH_INFO, errorLog);
-                    intent.putExtra("Restart", false);
                     startActivity(intent);
                 }
                 break;
@@ -171,32 +169,26 @@ public class MainActivity extends AppCompatActivity {
                             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/FlutterGenerator/Current-Activity")));
                         }).show();
                 break;
-            case "Bug Report":
-                fancy.setTitle("Bug Report").setMessage(
-                        "If you found a bug, take a screenshot and check crash logs in:\n"
-                                + new File(App.getCrashLogDir(), "crash.txt").getAbsolutePath()
-                                + "\n\nThen report it on GitHub.")
-                        .setPositiveButton("Create", (di, btn) -> {
-                            di.dismiss();
-                            startActivity(new Intent(Intent.ACTION_VIEW,
-                                    Uri.parse("https://github.com/FlutterGenerator/Current-Activity/issues/new")));
-                        }).show();
-                break;
         }
         return super.onOptionsItemSelected(item);
     }
 
-    public boolean usageStats(Context context) {
+    public static int getScreenWidth(Context context) {
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        ((WindowManager) context.getSystemService(Context.WINDOW_SERVICE))
+                .getDefaultDisplay().getMetrics(displayMetrics);
+        return displayMetrics.widthPixels;
+    }
+
+    public static boolean usageStats(Context context) {
         UsageStatsManager usm = (UsageStatsManager) context.getSystemService(Context.USAGE_STATS_SERVICE);
         long currentTime = System.currentTimeMillis();
         List<UsageStats> stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, currentTime - 1000 * 60 * 60, currentTime);
         return stats != null && !stats.isEmpty();
     }
 
-    public int getScreenWidth() {
-        DisplayMetrics displayMetrics = new DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
-        return displayMetrics.widthPixels;
+    public void showToast(String message) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 
     class UpdateSwitchReceiver extends BroadcastReceiver {
@@ -207,4 +199,4 @@ public class MainActivity extends AppCompatActivity {
             mAccessibilitySwitch.setChecked(DatabaseUtil.hasAccess());
         }
     }
-}
+            }
