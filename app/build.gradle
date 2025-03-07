@@ -1,7 +1,9 @@
 apply plugin: 'com.android.application'
 
 android {
+    namespace "io.github.ratul.topactivity" // Добавлен namespace
     compileSdkVersion 34
+
     defaultConfig {
         applicationId "io.github.ratul.topactivity"
         minSdkVersion 24
