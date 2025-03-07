@@ -16,17 +16,19 @@
  */
 package io.github.ratul.topactivity.service;
 
-import android.annotation.*;
-import android.app.*;
-import android.app.ActivityManager.*;
-import android.content.*;
-import android.content.pm.*;
-import android.os.*;
-import android.util.*;
+import android.annotation.TargetApi;
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.app.usage.UsageEvents;
+import android.app.usage.UsageStatsManager;
+import android.content.Context;
+import android.content.Intent;
+import android.os.Build;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.SystemClock;
 
-import java.util.*;
-import android.app.usage.*;
-import android.widget.Toast;
 import io.github.ratul.topactivity.utils.DatabaseUtil;
 import io.github.ratul.topactivity.utils.WindowUtil;
 
@@ -35,96 +37,101 @@ import io.github.ratul.topactivity.utils.WindowUtil;
  * Refactored by Ratul on 04/05/2022.
  */
 public class MonitoringService extends Service {
-	public boolean serviceAlive = false;
-	private boolean firstRun = true;
-	public static MonitoringService INSTANCE;
-	private UsageStatsManager usageStats;
-	public Handler mHandler = new Handler();
-	private String text;
-	private String text1;
+    public boolean serviceAlive = false;
+    private boolean firstRun = true;
+    public static MonitoringService INSTANCE;
+    private UsageStatsManager usageStats;
+    public Handler mHandler = new Handler();
+    private String text;
+    private String text1;
 
-	@Override
-	public void onCreate() {
-		super.onCreate();
-		INSTANCE = this;
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        INSTANCE = this;
+        serviceAlive = true;
+        usageStats = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
+    }
 
-		serviceAlive = true;
-		usageStats = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
-	}
+    @Override
+    public void onDestroy() {
+        serviceAlive = false;
+        super.onDestroy();
+    }
 
-	@Override
-	public void onDestroy() {
-		serviceAlive = false;
-		super.onDestroy();
-	}
+    public void getActivityInfo() {
+        long currentTimeMillis = System.currentTimeMillis();
+        UsageEvents queryEvents = usageStats.queryEvents(currentTimeMillis - (firstRun ? 600000 : 60000), currentTimeMillis);
 
-	public void getActivityInfo() {
-		long currentTimeMillis = System.currentTimeMillis();
-		UsageEvents queryEvents = usageStats.queryEvents(currentTimeMillis - (firstRun ? 600000 : 60000),
-				currentTimeMillis);
-		while (queryEvents.hasNextEvent()) {
-			UsageEvents.Event event = new UsageEvents.Event();
-			queryEvents.getNextEvent(event);
-			int type = event.getEventType();
-			if (type == UsageEvents.Event.MOVE_TO_FOREGROUND) {
-				text = event.getPackageName();
-				text1 = event.getClassName();
-			} else if (type == UsageEvents.Event.MOVE_TO_BACKGROUND) {
-				if (event.getPackageName().equals(text)) {
-					text = null;
-					text1 = null;
-				}
-			}
-		}
-	}
+        while (queryEvents.hasNextEvent()) {
+            UsageEvents.Event event = new UsageEvents.Event();
+            queryEvents.getNextEvent(event);
+            int type = event.getEventType();
+            if (type == UsageEvents.Event.MOVE_TO_FOREGROUND) {
+                text = event.getPackageName();
+                text1 = event.getClassName();
+            } else if (type == UsageEvents.Event.MOVE_TO_BACKGROUND) {
+                if (event.getPackageName().equals(text)) {
+                    text = null;
+                    text1 = null;
+                }
+            }
+        }
+    }
 
-	@Override
-	public IBinder onBind(Intent intent) {
-		return null;
-	}
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
 
-	@Override
-	public int onStartCommand(Intent intent, int flags, int startId) {
-		INSTANCE = this;
-		Runnable runner = new Runnable() {
-			@Override
-			public void run() {
-				if (!DatabaseUtil.isShowWindow()) {
-					MonitoringService.INSTANCE.mHandler.removeCallbacks(this);
-					MonitoringService.INSTANCE.stopSelf();
-				}
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        INSTANCE = this;
+        Runnable runner = new Runnable() {
+            @Override
+            public void run() {
+                if (!DatabaseUtil.isShowWindow()) {
+                    mHandler.removeCallbacks(this);
+                    stopSelf();
+                    return;
+                }
 
-				getActivityInfo();
-				if (MonitoringService.INSTANCE.text == null)
-					return;
+                getActivityInfo();
+                if (text == null) return;
 
-				MonitoringService.INSTANCE.firstRun = false;
-				if (DatabaseUtil.isShowWindow()) {
-					WindowUtil.show(MonitoringService.INSTANCE, MonitoringService.INSTANCE.text,
-							MonitoringService.INSTANCE.text1);
-				} else {
-					MonitoringService.INSTANCE.stopSelf();
-				}
-				mHandler.postDelayed(this, 500);
-			}
-		};
+                firstRun = false;
+                if (DatabaseUtil.isShowWindow()) {
+                    WindowUtil.show(MonitoringService.this, text, text1);
+                } else {
+                    stopSelf();
+                }
 
-		mHandler.postDelayed(runner, 500);
-		return super.onStartCommand(intent, flags, startId);
-	}
+                mHandler.postDelayed(this, 500);
+            }
+        };
 
-	@TargetApi(Build.VERSION_CODES.ICE_CREAM_SANDWICH)
-	@Override
-	public void onTaskRemoved(Intent rootIntent) {
-		Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
-		restartServiceIntent.setPackage(getPackageName());
+        mHandler.postDelayed(runner, 500);
+        return START_STICKY;
+    }
 
-		PendingIntent restartServicePendingIntent = PendingIntent.getService(getApplicationContext(), 1,
-				restartServiceIntent, PendingIntent.FLAG_ONE_SHOT);
-		AlarmManager alarmService = (AlarmManager) getApplicationContext().getSystemService(Context.ALARM_SERVICE);
-		alarmService.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + 500,
-				restartServicePendingIntent);
+    @TargetApi(Build.VERSION_CODES.ICE_CREAM_SANDWICH)
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
+        restartServiceIntent.setPackage(getPackageName());
 
-		super.onTaskRemoved(rootIntent);
-	}
+        PendingIntent restartServicePendingIntent = PendingIntent.getService(
+                getApplicationContext(),
+                1,
+                restartServiceIntent,
+                PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE // Исправлено
+        );
+
+        AlarmManager alarmService = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        if (alarmService != null) {
+            alarmService.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + 500, restartServicePendingIntent);
+        }
+
+        super.onTaskRemoved(rootIntent);
+    }
 }
