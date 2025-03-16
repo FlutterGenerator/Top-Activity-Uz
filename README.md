@@ -2,7 +2,7 @@
   <img width="210em" height="auto" src="./.resources/images/ic_launcher.png" alt="Logo" border="0">
 </div>
 <h1 align="center">
-  <b>Current Activity</b>
+  <b>Top Activity Uz</b>
 </h1>
 <p align="center">
 An useful tool for Android Developers &amp; Reversers, which shows the package name and class name of current activity which you are in
